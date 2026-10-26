@@ -19,7 +19,7 @@ public:
   {
     this->declare_parameter("reliability", "reliable");
     this->declare_parameter("depth", 10);
-    this->declare_parameter("callback_delay_ms", 30);
+    this->declare_parameter("callback_delay_ms", 0);
 
     reliability_ = this->get_parameter("reliability").as_string();
     depth_ = this->get_parameter("depth").as_int();
@@ -96,6 +96,7 @@ private:
     else if (msg->seq > expected_seq_)
     {
       const uint32_t lost = msg->seq - expected_seq_;
+      lost_count_ += lost;
       RCLCPP_WARN(
           this->get_logger(),
           "检测到丢包: 期望 seq=%u, 实际 seq=%u, 丢失 %u 条",
@@ -115,7 +116,7 @@ private:
 
     RCLCPP_INFO_THROTTLE(
         this->get_logger(), *this->get_clock(), 2000,
-        "收到 seq=%u, stamp=%u.%09u, distance=%.3f",
+        "收到 seq=%u, stamp=%d.%09u, distance=%.3f",
         msg->seq, msg->header.stamp.sec, msg->header.stamp.nanosec, msg->distance);
   }
 
@@ -128,10 +129,13 @@ private:
         "累计: 收到 %u 条, 丢失 %u 条, 丢包率 %.2f%%",
         received_count_, lost_count_, loss_rate);
 
-    /*
-    在这之间加入计算帧率并打印的代码
-
-    */
+    const auto now = std::chrono::steady_clock::now();
+    const double elapsed = std::chrono::duration<double>(now - last_report_time_).count();
+    const double fps = elapsed > 0.0 ?
+        static_cast<double>(received_count_ - last_received_count_) / elapsed : 0.0;
+    RCLCPP_INFO(this->get_logger(), "接收帧率: %.2f Hz (窗口 %.3f s)", fps, elapsed);
+    last_received_count_ = received_count_;
+    last_report_time_ = now;
   }
 
   rclcpp::Subscription<nav_hw_interfaces::msg::SensorData>::SharedPtr subscription_;

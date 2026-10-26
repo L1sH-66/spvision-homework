@@ -6,6 +6,8 @@
 #include "statistics.hpp"
 
 #include <filesystem>
+#include <exception>
+#include <mutex>
 #include <memory>
 #include <thread>
 #include <vector>
@@ -31,6 +33,11 @@ public:
     StatisticsSnapshot statistics() const;
 
 private:
+    void joinThreads();
+    void recordError();
+    bool started_ = false;
+    std::mutex error_mutex_;
+    std::exception_ptr error_;
     void producerLoop();
     void workerLoop(int worker_id);
 

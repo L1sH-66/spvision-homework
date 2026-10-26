@@ -37,35 +37,47 @@ Pipeline::Pipeline(std::unique_ptr<FrameSource> source, PipelineConfig config)
 
 Pipeline::~Pipeline()
 {
-    // TODO: Make sure Pipeline never destroys running threads.
+    joinThreads(); // Drain normally; never close the queue before the producer finishes.
 }
 
 void Pipeline::start()
 {
+    if (started_) throw std::logic_error("Pipeline::start may only be called once");
     std::filesystem::create_directories(config_.output_directory);
     workers_.reserve(static_cast<std::size_t>(config_.worker_count));
-    for (int i = 0; i < config_.worker_count; ++i)
+    started_ = true;
+    try
     {
-        workers_.emplace_back([this, i]
-                              { workerLoop(i); });
+        for (int i = 0; i < config_.worker_count; ++i)
+            workers_.emplace_back([this, i] { workerLoop(i); });
+        producer_ = std::thread([this] { producerLoop(); });
     }
-    producer_ = std::thread([this]
-                            { producerLoop(); });
+    catch (...)
+    {
+        queue_.close(); // Wake workers if thread creation fails before producer starts.
+        joinThreads();
+        throw;
+    }
+}
+
+void Pipeline::joinThreads()
+{
+    if (producer_.joinable()) producer_.join();
+    for (auto &worker : workers_)
+        if (worker.joinable()) worker.join();
 }
 
 void Pipeline::wait()
 {
-    if (producer_.joinable())
-    {
-        producer_.join();
-    }
-    for (auto &worker : workers_)
-    {
-        if (worker.joinable())
-        {
-            worker.join();
-        }
-    }
+    joinThreads();
+    std::lock_guard<std::mutex> lock(error_mutex_);
+    if (error_) std::rethrow_exception(error_);
+}
+
+void Pipeline::recordError()
+{
+    std::lock_guard<std::mutex> lock(error_mutex_);
+    if (!error_) error_ = std::current_exception();
 }
 
 StatisticsSnapshot Pipeline::statistics() const
@@ -75,16 +87,17 @@ StatisticsSnapshot Pipeline::statistics() const
 
 void Pipeline::producerLoop()
 {
-    Frame frame;
-    while (source_->next(frame))
+    try
     {
-        statistics_.onProduced();
-        logLine(std::cout, "[Producer] frame " + std::to_string(frame.id));
-
-        // What's the best way to write this?
-        queue_.push(frame);
+        Frame frame;
+        while (source_->next(frame))
+        {
+            queue_.push(std::move(frame));
+            statistics_.onProduced();
+        }
     }
-    queue_.close();
+    catch (...) { recordError(); }
+    queue_.close(); // Also close on exceptions so waiting workers can finish.
 }
 
 void Pipeline::workerLoop(int worker_id)
@@ -92,6 +105,8 @@ void Pipeline::workerLoop(int worker_id)
     Frame frame;
     while (queue_.pop(frame))
     {
+      try
+      {
         if (config_.worker_delay_ms > 0)
         {
             std::this_thread::sleep_for(
@@ -120,5 +135,8 @@ void Pipeline::workerLoop(int worker_id)
         {
             statistics_.onSaved();
         }
+        else throw std::runtime_error("failed to save frame " + name);
+      }
+      catch (...) { recordError(); } // Drain other frames, report failure through wait().
     }
 }

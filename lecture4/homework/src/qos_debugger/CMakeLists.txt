@@ -7,13 +7,14 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rcl_interfaces REQUIRED)
 find_package(nav_hw_interfaces REQUIRED)
 
 add_executable(qos_debugger_pub src/qos_debugger_pub.cpp)
 ament_target_dependencies(qos_debugger_pub rclcpp nav_hw_interfaces)
 
 add_executable(qos_debugger_sub src/qos_debugger_sub.cpp)
-ament_target_dependencies(qos_debugger_sub rclcpp nav_hw_interfaces)
+ament_target_dependencies(qos_debugger_sub rclcpp rcl_interfaces nav_hw_interfaces)
 
 install(TARGETS
   qos_debugger_pub
