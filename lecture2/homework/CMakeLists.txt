@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16.3)
 
-project(lecture3_homework)
+project(lecture2_homework)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_BUILD_TYPE Debug)
@@ -27,6 +27,6 @@ add_executable(main main.cpp)
 add_executable(example io/example.cpp)
 add_executable(opencv opencv.cpp)
 
-target_link_libraries(main ${OpenCV_LIBS} fmt::fmt yaml-cpp tools io auto_aim)
+target_link_libraries(main ${OpenCV_LIBS} fmt::fmt yaml-cpp tools io tasks)
 target_link_libraries(example ${OpenCV_LIBS} io)
-target_link_libraries(opencv ${OpenCV_LIBS} fmt::fmt yaml-cpp tools io auto_aim)
+target_link_libraries(opencv ${OpenCV_LIBS} fmt::fmt yaml-cpp tools io tasks)
