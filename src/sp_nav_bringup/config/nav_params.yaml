@@ -1,0 +1,113 @@
+# Navigation configuration; simulator parameters remain unchanged.
+planner_server:
+  ros__parameters:
+    costmap_topic: "/global_costmap"
+    local_costmap_topic: "/local_costmap/costmap"
+    path_topic: "/global_path"
+    plugin_name: "AStar"
+    plugin_type: "sp_global_planner/AStarPlanner"
+
+    AStar:
+      lethal_cost: 100            # >= this cost is not traversable
+      cost_weight: 6.0            # cell factor 1 + cost_weight*cost/100: prefer corridor centre
+      # cost-aware path smoothing (bonus item); all optional, defaults in astar_core.hpp
+      smooth_enable: true
+      smooth_spacing: 0.10        # m between smoothed way-points
+      smooth_iterations: 300
+      smooth_data_weight: 0.01    # pull back towards the A* cells (smaller = smoother)
+      smooth_weight: 0.45         # curvature penalty
+      smooth_max_cost: 40         # smoothed points/segments stay below this cost (~0.52 m from walls)
+      curvature_iterations: 200   # second stage: minimum-curvature refinement inside the same safe corridor
+      curvature_weight: 0.04      # biharmonic step (< 1/16)
+
+esdf_map_publisher:
+  ros__parameters:
+    map_yaml: "sp_nav_bringup/map/maze_map.yaml"
+    frame_id: "map"
+    publish_rate_hz: 1.0
+    unknown_as_obstacle: false
+    robot_radius: 0.25
+    margin: 0.18                  # lethal radius 0.43 m > 0.354 m circumradius of the spinning 0.5 m chassis
+    d_safe: 0.75                  # cost reaches 0 at the corridor centre line (half width 0.75 m)
+    w: 10.0
+    unknown_cost: 100
+    visualize_esdf: false
+
+controller_server:
+  ros__parameters:
+    local_path_topic: "/global_path"
+    odom_topic: "/Odometry"
+    odom_frame_id: "lidar_odom"
+    map_frame_id: "map"
+    cmd_vel_topic: "/sentry/cmd_vel"
+    base_frame_id: "base_link"
+    control_frequency: 50.0
+
+    plugin_name: "PidController"
+    plugin_type: "PidController"
+
+    PidController:
+      base_frame_id: "base_link"
+      controller_mode: "mpc"       # "mpc" (default) or "pursuit" (look-ahead fallback)
+      # speed profile
+      max_speed: 1.42              # m/s real cruise speed (steady state of a 2 m/s command while spinning)
+      lateral_accel: 2.0           # m/s^2, corner limit v <= sqrt(lateral_accel / curvature); = plant a_max
+      brake_decel: 1.2             # m/s^2 used by the profile; < a_max 2.0 because of the 0.3 s lag (no overshoot)
+      min_corner_speed: 0.35
+      curvature_window: 0.30       # m
+      # identified plant model (README 4.1)
+      dead_time: 0.24              # s, command -> velocity response delay incl. sampling
+      lag_gain: 3.4                # 1/s, v' = lag_gain * (v_ss(u) - v)
+      max_acceleration: 2.0        # m/s^2, simulator a_max
+      yaw_latency: 0.017           # s, wait for the next 30 Hz simulator step (TF age is added at run time)
+      # linear MPC
+      mpc_horizon: 16              # steps (integer)
+      mpc_step: 0.05               # s, horizon 0.8 s
+      mpc_q_cross: 400.0           # cross-track position weight
+      mpc_q_along: 4.0             # along-track position weight
+      mpc_q_vel: 1.0               # velocity weight
+      mpc_r_delta: 1.0             # input-change weight
+      mpc_r_ref: 0.6               # input vs reference-velocity weight (robust to model mismatch)
+      # pursuit fallback
+      lookahead: 0.30              # m, look-ahead = lookahead + lookahead_time * |v|
+      lookahead_time: 0.10
+      position_gain: 2.0           # 1/s cross-track P
+      lateral_damping: 0.18
+      # velocity loop (pursuit and goal servo)
+      velocity_kp: 1.0
+      velocity_ki: 0.6
+      velocity_integral_limit: 0.35
+      # goal
+      goal_radius: 0.40            # m of remaining path where the Euclidean goal servo takes over
+      goal_gain: 4.0               # 1/s
+      stop_tolerance: 0.02         # m, output zero when this close and slower than stop_speed
+      stop_speed: 0.05             # m/s
+      # output
+      command_slew: 12.0           # m/s^2
+      max_command: 2.0             # m/s command magnitude = simulator v_max (4.0 would give ~1.68 m/s real, see README)
+      plan_keep_distance: 0.30     # m, keep the current plan while re-plans stay this close
+
+sp_decision:
+  ros__parameters:
+    tick_rate_hz: 10.0
+    tree_files:
+      - "sp_decision/decision_trees/click_nav.xml"
+    bt_plugins:
+      - "nav_to_pose_bt_node"
+      - "condition_judge_bt_node"
+      - "wait_duration_bt_node"
+      - "gimbal_control_bt_node"
+      - "chassis_mode_bt_node"
+      - "set_double_bt_node"
+
+nav_interface_node:
+  ros__parameters:
+    default_bt_xml: "sp_nav_bt/nav_bt/default_nav_with_fallback.xml"
+    enable_bt_cout_logger: false
+    bt_plugins:
+      - "nav_compute_path_service"
+      - "nav_state_track"
+      - "nav_rate_control"
+      - "nav_repeat_sequence"
+      - "nav_get_pose"
+      - "nav_set_control_enable"

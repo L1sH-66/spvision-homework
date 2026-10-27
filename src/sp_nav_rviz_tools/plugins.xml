@@ -1,0 +1,5 @@
+<library path="maze_goal">
+ <class name="sp_nav_rviz_tools/MazeGoal" type="sp_nav_rviz_tools::MazeGoal" base_class_type="rviz_common::Tool">
+  <description>Click once to send exact map goal (14.100,14.100). No automatic goal.</description>
+ </class>
+</library>

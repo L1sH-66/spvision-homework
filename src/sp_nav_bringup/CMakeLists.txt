@@ -1,0 +1,12 @@
+cmake_minimum_required(VERSION 3.8)
+project(sp_nav_bringup)
+find_package(ament_cmake REQUIRED)
+install(DIRECTORY
+  launch
+  config
+  rviz
+  map
+  DESTINATION share/${PROJECT_NAME}
+)
+install(PROGRAMS scripts/evaluate.py DESTINATION lib/${PROJECT_NAME})
+ament_package()
